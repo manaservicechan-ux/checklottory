@@ -1,36 +1,95 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ระบบตรวจสลากกินแบ่งรัฐบาล (ฟรี ไม่ต้องใช้ API)
 
-## Getting Started
+เว็บแอปสำหรับตรวจสลากกินแบ่งรัฐบาลของไทย ทำงานในเครื่องของผู้ใช้ทั้งหมด ไม่ใช้บริการคลาวด์
 
-First, run the development server:
+## ฟีเจอร์
+
+- **แปลง PDF ผลรางวัล → Excel** อัตโนมัติ (server-side pdfjs)
+- รับ **ไฟล์ Excel ผลรางวัล** (`.xlsx` / `.xls` / `.csv`) — มี template ให้
+- รับ **ไฟล์ Excel เลขสลากใบจอง** — ระบบดึงเลข 6 หลักจากทุก cell อัตโนมัติ (เลข 1–5 หลัก pad ด้วย 0 ทางซ้าย)
+- ตรวจรางวัลครบ 9 ประเภท L6:
+  - รางวัลที่ 1, ข้างเคียงรางวัลที่ 1
+  - รางวัลที่ 2, 3, 4, 5
+  - เลขหน้า 3 ตัว, เลขท้าย 3 ตัว, เลขท้าย 2 ตัว
+- สรุปยอดเงินรวมที่ถูกรางวัล + ตารางรายละเอียด
+- Export ผลเป็น CSV / PDF
+- บันทึกประวัติงวดที่ตรวจในเบราว์เซอร์ (IndexedDB)
+
+## ติดตั้ง
 
 ```bash
+cd D:\Projects\lottery-checker
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+เปิด <http://localhost:3000>
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## วิธีใช้
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. (ทางลัด) **ลาก PDF ผลรางวัลของสำนักงานสลากฯ** ลงในช่อง "🔄 แปลง PDF ผลรางวัล → Excel" → กด "แปลง & ดาวน์โหลด" จะได้ Excel ตามฟอร์แมต
+2. **อัปโหลด Excel ผลรางวัล** ในช่องที่ 1 (ใช้ไฟล์ที่แปลงมา หรือกรอกเองด้วย template)
+3. **อัปโหลด Excel เลขสลากใบจอง** ในช่องที่ 2 — รับหลายไฟล์ ระบบดึงเลข 6 หลักจากทุก cell ของทุก sheet
+4. **กด "ตรวจรางวัล"** ระบบจับคู่ทันที (ทำงานในเครื่อง ไม่ส่งข้อมูลออกคลาวด์ใดๆ)
+5. ดู:
+   - ยอดรวมเงินรางวัล + จำนวนใบที่ถูก
+   - ตารางผลรางวัลของงวด
+   - ตารางเลขที่ถูกรางวัล (ระบุประเภท + เงิน + ชุดต้นทาง)
+6. กด **ดาวน์โหลด CSV / PDF** เพื่อ export หรือ **บันทึกประวัติ** เพื่อดูภายหลังที่ `/history`
 
-## Learn More
+## โครงสร้างไฟล์ Excel template
 
-To learn more about Next.js, take a look at the following resources:
+| คอลัมน์ A | คอลัมน์ B |
+|---|---|
+| งวด | 16 มิถุนายน 2569 |
+| รางวัลที่ 1 | 287184 |
+| รางวัลข้างเคียงรางวัลที่ 1 | 287183, 287185 |
+| รางวัลที่ 2 | 124998, 281342, 327953, 459206, 791717 |
+| รางวัลที่ 3 | 012001 161155 173838 ... (10 เลข) |
+| รางวัลที่ 4 | (50 เลข คั่นด้วย space) |
+| รางวัลที่ 5 | (100 เลข คั่นด้วย space) |
+| เลขหน้า 3 ตัว | 434, 758 |
+| เลขท้าย 3 ตัว | 007, 721 |
+| เลขท้าย 2 ตัว | 48 |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## โครงสร้างโค้ดสำคัญ
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+src/
+├─ app/
+│  ├─ page.tsx                          # หน้าหลัก
+│  ├─ history/page.tsx                  # หน้าประวัติ
+│  └─ api/pdf-to-xlsx/route.ts          # PDF → Excel
+├─ components/
+│  ├─ UploadZone.tsx                    # dropzone
+│  ├─ PdfConverter.tsx                  # section "🔄 แปลง PDF"
+│  ├─ DrawSummary.tsx                   # แสดงรางวัลของงวด
+│  ├─ WinnersTable.tsx                  # ตารางเลขที่ถูก
+│  ├─ TotalCard.tsx                     # การ์ดยอดรวม
+│  └─ ExportButtons.tsx                 # CSV / PDF / บันทึก
+└─ lib/
+   ├─ lottery/
+   │  ├─ checkTicket.ts                 # logic จับคู่ ticket vs รางวัล
+   │  ├─ prizes.ts
+   │  └─ types.ts
+   ├─ excel/
+   │  ├─ parseDrawXlsx.ts               # อ่าน Excel ผลรางวัล → DrawResult
+   │  ├─ parseTicketsXlsx.ts            # อ่าน Excel ใบจอง → Ticket[]
+   │  ├─ createTemplate.ts              # template ผลรางวัล
+   │  └─ createTicketsTemplate.ts       # template เลขสลาก
+   ├─ pdf/
+   │  ├─ pdfToLines.ts                  # pdfjs + reconstruct lines (position-based)
+   │  └─ parsePdfLines.ts               # parse lines → DrawResult + → template rows
+   ├─ history/store.ts                  # IndexedDB
+   └─ export/                           # CSV + PDF
+```
 
-## Deploy on Vercel
+## หมายเหตุ
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **ไม่มี backend** — ทั้ง parser และ ticket checking ทำงานในเบราว์เซอร์ทั้งหมด
+- **ไม่ส่งข้อมูลออกนอกเครื่อง** — เลขใบจองและผลรางวัลอยู่ในเครื่องผู้ใช้เท่านั้น
+- **PDF Export ภาษาไทย** ใช้ฟอนต์เริ่มต้นของ jsPDF จึงอาจไม่สวยงาม — แนะนำให้ใช้ CSV หากต้องการความสมบูรณ์
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## License
+
+MIT
