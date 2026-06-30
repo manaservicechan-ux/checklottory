@@ -7,9 +7,14 @@ export interface ParseTicketsResult {
   bySheet: { sheet: string; count: number }[];
 }
 
-function pad6(raw: string): string {
-  return raw.replace(/\D/g, "").padStart(6, "0");
-}
+// Thai lottery tickets are exactly 6 digits (000000–999999). We only accept
+// tokens that match exactly to avoid synthesizing fake tickets from row
+// numbers, dates, header text, or notes (e.g. "เลขสลาก 6 หลัก" → "000006").
+// Cells containing a single 5-digit numeric value are also accepted with one
+// leading zero padded, since Excel sometimes strips a single leading zero from
+// numeric cells (006432 → 6432).
+const SIX_DIGIT = /^\d{6}$/;
+const FIVE_DIGIT = /^\d{5}$/;
 
 export async function parseTicketsXlsx(file: File): Promise<ParseTicketsResult> {
   const buf = await file.arrayBuffer();
@@ -35,15 +40,20 @@ export async function parseTicketsXlsx(file: File): Promise<ParseTicketsResult> 
         if (cell === null || cell === undefined) continue;
         const raw = String(cell).trim();
         if (!raw) continue;
-        // Allow tokens within a cell to be split by space/comma/etc.
+        // A cell with a single 5-digit numeric value is treated as a stripped
+        // ticket; otherwise we split into tokens and require each to be 6 digits.
         const tokens = raw.split(/[\s,;\n\r\t|]+/).filter(Boolean);
+        const singleFiveDigit =
+          tokens.length === 1 && FIVE_DIGIT.test(tokens[0]) ? tokens[0] : null;
+
         for (const tok of tokens) {
-          const digits = tok.replace(/\D/g, "");
-          if (digits.length === 0) continue;
-          // Treat any 1-6 digit numeric token as a ticket (left-pad to 6).
-          // Anything longer or mixed alpha is treated as invalid.
-          if (/^\d{1,6}$/.test(tok)) {
-            const num = pad6(tok);
+          let num: string | null = null;
+          if (SIX_DIGIT.test(tok)) {
+            num = tok;
+          } else if (singleFiveDigit && tok === singleFiveDigit) {
+            num = "0" + tok;
+          }
+          if (num) {
             tickets.push({
               number: num,
               source: `${file.name}${wb.SheetNames.length > 1 ? `:${sheetName}` : ""}`,
@@ -51,7 +61,8 @@ export async function parseTicketsXlsx(file: File): Promise<ParseTicketsResult> 
             });
             sheetCount++;
             cellIdx++;
-          } else if (/\d/.test(tok)) {
+          } else if (/^\d{7,}$/.test(tok)) {
+            // Numeric but wrong length — likely a typo or merged value.
             invalid.push(tok);
           }
         }
