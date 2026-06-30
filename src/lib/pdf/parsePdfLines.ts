@@ -171,6 +171,49 @@ export function parseLines(lines: string[]): DrawResult {
     }
   }
 
+  // ----- N3: รางวัลสามตรง + รางวัลสามสลับหลัก -----
+  // Line: "184 148 418 481 814 841" → straight = first, permutation = next 5
+  const n3StraightIdx = findLineIndex(lines, /รางวัลสามตรง/);
+  if (n3StraightIdx >= 0) {
+    for (let i = n3StraightIdx + 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line || /รางวัลละ|บาท|รางวัลสาม/.test(line)) continue;
+      if (/นโยบาย|วิสัยทัศ|ผลการออก/.test(line)) break;
+      const threes = line.split(/\s+/).filter((t) => /^\d{3}$/.test(t));
+      if (threes.length >= 6) {
+        prizes.n3Straight = {
+          numbers: [threes[0]],
+          amount: DEFAULT_AMOUNTS.n3Straight,
+        };
+        prizes.n3Permutation = {
+          numbers: threes.slice(1, 6),
+          amount: DEFAULT_AMOUNTS.n3Permutation,
+        };
+        break;
+      }
+    }
+  }
+
+  // ----- N3: รางวัลสองตรง + รางวัลพิเศษ -----
+  // 2-digit token (สองตรง) and a longer numeric token (รางวัลพิเศษ) follow.
+  const n3TwoIdx = findLineIndex(lines, /รางวัลสองตรง|รางวัลพิเศษ/);
+  if (n3TwoIdx >= 0) {
+    for (let i = n3TwoIdx + 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line || /รางวัลละ|บาท/.test(line)) continue;
+      if (/นโยบาย|วิสัยทัศ|ผลการออก/.test(line)) break;
+      const tokens = line.split(/\s+/);
+      for (const tok of tokens) {
+        if (/^\d{2}$/.test(tok) && !prizes.n3Two) {
+          prizes.n3Two = { numbers: [tok], amount: DEFAULT_AMOUNTS.n3Two };
+        } else if (/^\d{8,}$/.test(tok) && !prizes.n3Special) {
+          prizes.n3Special = { numbers: [tok], amount: DEFAULT_AMOUNTS.n3Special };
+        }
+      }
+      if (prizes.n3Two && prizes.n3Special) break;
+    }
+  }
+
   return { drawDate, drawLabel, prizes };
 }
 
@@ -190,5 +233,9 @@ export function drawToTemplateRows(draw: DrawResult): (string | number)[][] {
     ["เลขหน้า 3 ตัว", j(get("front3")), "2 หมายเลข"],
     ["เลขท้าย 3 ตัว", j(get("back3")), "2 หมายเลข"],
     ["เลขท้าย 2 ตัว", j(get("back2")), "1 หมายเลข"],
+    ["รางวัลสามตรง (N3)", j(get("n3Straight")), "1 หมายเลข 3 หลัก"],
+    ["รางวัลสามสลับหลัก (N3)", j(get("n3Permutation")), "5 หมายเลข"],
+    ["รางวัลสองตรง (N3)", j(get("n3Two")), "1 หมายเลข 2 หลัก"],
+    ["รางวัลพิเศษ (N3)", j(get("n3Special")), "1 หมายเลข"],
   ];
 }
