@@ -1,4 +1,4 @@
-import type { TextItem } from "pdfjs-dist/types/src/display/api";
+import { getDocumentProxy } from "unpdf";
 
 interface ItemWithPos {
   text: string;
@@ -6,31 +6,29 @@ interface ItemWithPos {
   y: number;
 }
 
-// pdfjs may emit codepoints from the font's Private Use Area (U+F700–U+F8FF)
-// when a Thai font uses custom glyph mappings. Strip them so regexes still match.
+interface UnpdfTextItem {
+  str: string;
+  transform: number[];
+}
+
 function cleanText(text: string): string {
   return text
-    .replace(/[-]/g, "")
+    .replace(/[-]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 export async function pdfBufferToLines(buf: Buffer): Promise<string[]> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  // Disable fake worker setup in Node; legacy build can parse on the main thread.
-  pdfjs.GlobalWorkerOptions.workerSrc =
-    "pdfjs-dist/legacy/build/pdf.worker.mjs";
-  const doc = await pdfjs.getDocument({
-    data: new Uint8Array(buf),
+  const doc = await getDocumentProxy(new Uint8Array(buf), {
     useSystemFonts: true,
-  }).promise;
+  });
 
   const lines: string[] = [];
 
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);
     const tc = await page.getTextContent();
-    const items: ItemWithPos[] = (tc.items as TextItem[])
+    const items: ItemWithPos[] = (tc.items as UnpdfTextItem[])
       .filter((it) => typeof it.str === "string")
       .map((it) => ({
         text: it.str,
@@ -38,7 +36,6 @@ export async function pdfBufferToLines(buf: Buffer): Promise<string[]> {
         y: it.transform[5],
       }));
 
-    // Group by y (rounded). PDF y-axis: larger y = higher on page.
     const buckets = new Map<number, ItemWithPos[]>();
     for (const it of items) {
       const key = Math.round(it.y);
@@ -47,7 +44,6 @@ export async function pdfBufferToLines(buf: Buffer): Promise<string[]> {
       buckets.set(key, arr);
     }
 
-    // Sort buckets top-down (descending y)
     const ys = [...buckets.keys()].sort((a, b) => b - a);
     for (const y of ys) {
       const row = (buckets.get(y) ?? []).sort((a, b) => a.x - b.x);
@@ -57,6 +53,6 @@ export async function pdfBufferToLines(buf: Buffer): Promise<string[]> {
     }
   }
 
-  doc.cleanup();
+  doc.destroy();
   return lines;
 }
